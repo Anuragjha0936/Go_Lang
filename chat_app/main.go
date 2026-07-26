@@ -13,7 +13,7 @@ import (
 func init(){
 	err:=godotenv.Load()
 	if err!=nil{
-		log.Fatal(err)
+		log.Println(".env file not found, using Railway environment variables")
 	}
 }
 func main()  {
