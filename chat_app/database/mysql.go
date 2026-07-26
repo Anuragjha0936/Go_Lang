@@ -20,7 +20,7 @@ var DB *sql.DB
 func init() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal(err)
+		log.Println(".env file not found, using Railway environment variables")
 	}
 	dsn := os.Getenv("MYSQL_DSN")
 
