@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Resume Parser</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: sans-serif;
+      background: #0f0f13;
+      color: #eee;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+      background: linear-gradient(90deg, #6c63ff, #ff6b9d);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    p.sub { color: #666; font-size: 14px; margin-bottom: 32px; }
+
+    .upload-box {
+      border: 2px dashed #333;
+      border-radius: 14px;
+      padding: 48px 32px;
+      text-align: center;
+      width: 100%;
+      max-width: 500px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+      position: relative;
+    }
+    .upload-box:hover { border-color: #6c63ff; }
+    .upload-box input {
+      position: absolute; inset: 0;
+      opacity: 0; cursor: pointer;
+    }
+    .upload-box .icon { font-size: 40px; margin-bottom: 12px; }
+    .upload-box p { color: #888; font-size: 14px; }
+    .upload-box p span { color: #6c63ff; font-weight: bold; }
+
+    .file-name {
+      margin-top: 12px;
+      font-size: 13px;
+      color: #6c63ff;
+      min-height: 20px;
+    }
+
+    button {
+      margin-top: 20px;
+      width: 100%;
+      max-width: 500px;
+      padding: 14px;
+      background: linear-gradient(135deg, #6c63ff, #9b55ff);
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .status {
+      margin-top: 16px;
+      font-size: 13px;
+      color: #6c63ff;
+      min-height: 20px;
+    }
+
+    .result {
+      margin-top: 32px;
+      width: 100%;
+      max-width: 800px;
+      display: none;
+    }
+
+    .section {
+      background: #16161f;
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 16px;
+    }
+
+    .section h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6c63ff;
+      margin-bottom: 14px;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .info-item label {
+      display: block;
+      font-size: 11px;
+      color: #555;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .info-item p {
+      font-size: 14px;
+      color: #ddd;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tag {
+      background: rgba(108,99,255,0.15);
+      border: 1px solid rgba(108,99,255,0.3);
+      color: #a89fff;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+    }
+
+    .exp-item, .edu-item {
+      border-left: 2px solid #6c63ff;
+      padding-left: 14px;
+      margin-bottom: 16px;
+    }
+    .exp-item:last-child, .edu-item:last-child { margin-bottom: 0; }
+
+    .exp-item h3, .edu-item h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #eee;
+    }
+
+    .exp-item p, .edu-item p {
+      font-size: 13px;
+      color: #888;
+      margin-top: 2px;
+    }
+
+    .exp-item ul {
+      margin-top: 8px;
+      padding-left: 16px;
+    }
+
+    .exp-item ul li {
+      font-size: 13px;
+      color: #aaa;
+      margin-bottom: 4px;
+    }
+
+    .error {
+      margin-top: 16px;
+      color: #ff6b6b;
+      font-size: 13px;
+      background: rgba(255,107,107,0.1);
+      border: 1px solid rgba(255,107,107,0.2);
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: none;
+      max-width: 500px;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Resume Parser</h1>
+  <p class="sub">Upload a PDF resume and get structured data instantly</p>
+
+  <div class="upload-box" id="uploadBox">
+    <input type="file" accept=".pdf" id="fileInput" onchange="onFileChange(event)"/>
+    <div class="icon">📄</div>
+    <p>Drop your PDF here or <span>browse</span></p>
+    <p style="margin-top:6px; font-size:12px;">PDF only</p>
+    <div class="file-name" id="fileName"></div>
+  </div>
+
+  <button id="parseBtn" onclick="parse()" disabled>Parse Resume</button>
+
+  <div class="status" id="status"></div>
+  <div class="error" id="error"></div>
+
+  <div class="result" id="result"></div>
+
+  <script>
+    let selectedFile = null;
+
+    function onFileChange(e) {
+      selectedFile = e.target.files[0];
+      document.getElementById('fileName').textContent = selectedFile ? selectedFile.name : '';
+      document.getElementById('parseBtn').disabled = !selectedFile;
+      document.getElementById('error').style.display = 'none';
+      document.getElementById('result').style.display = 'none';
+    }
+
+    async function parse() {
+      if (!selectedFile) return;
+
+      const btn = document.getElementById('parseBtn');
+      const status = document.getElementById('status');
+      const errorBox = document.getElementById('error');
+      const result = document.getElementById('result');
+
+      btn.disabled = true;
+      status.textContent = '⏳ Parsing resume...';
+      errorBox.style.display = 'none';
+      result.style.display = 'none';
+
+      const form = new FormData();
+      form.append('file', selectedFile);
+
+      try {
+        const res = await fetch('http://localhost:8080/parse', {
+          method: 'POST',
+          body: form
+        });
+
+        const json = await res.json();
+
+        if (!res.ok) {
+          throw new Error(json.error || 'Something went wrong');
+        }
+
+        status.textContent = '✅ Parsed successfully!';
+        renderResult(json.data);
+
+      } catch (err) {
+        status.textContent = '';
+        errorBox.textContent = '❌ ' + err.message;
+        errorBox.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function val(v) {
+      return v || '—';
+    }
+
+    function renderResult(data) {
+      const result = document.getElementById('result');
+      result.style.display = 'block';
+
+      let html = '';
+
+      // Basic Info
+      html += `
+        <div class="section">
+          <h2>Basic Info</h2>
+          <div class="info-grid">
+            <div class="info-item"><label>Name</label><p>${val(data.name)}</p></div>
+            <div class="info-item"><label>Email</label><p>${val(data.email)}</p></div>
+            <div class="info-item"><label>Phone</label><p>${val(data.phone)}</p></div>
+            <div class="info-item"><label>Location</label><p>${val(data.location)}</p></div>
+          </div>
+          ${data.summary ? `<p style="margin-top:14px; font-size:14px; color:#aaa; line-height:1.6">${data.summary}</p>` : ''}
+        </div>`;
+
+      // Skills
+      if (data.skills && data.skills.length) {
+        html += `
+          <div class="section">
+            <h2>Skills</h2>
+            <div class="tags">
+              ${data.skills.map(s => `<span class="tag">${s}</span>`).join('')}
+            </div>
+          </div>`;
+      }
+
+      // Experience
+      if (data.experience && data.experience.length) {
+        html += `<div class="section"><h2>Experience</h2>`;
+        data.experience.forEach(exp => {
+          html += `
+            <div class="exp-item">
+              <h3>${val(exp.title)} @ ${val(exp.company)}</h3>
+              <p>${val(exp.dates)}</p>
+              ${exp.highlights && exp.highlights.length
+                ? `<ul>${exp.highlights.map(h => `<li>${h}</li>`).join('')}</ul>`
+                : ''}
+            </div>`;
+        });
+        html += `</div>`;
+      }
+
+      // Education
+      if (data.education && data.education.length) {
+        html += `<div class="section"><h2>Education</h2>`;
+        data.education.forEach(edu => {
+          html += `
+            <div class="edu-item">
+              <h3>${val(edu.institution)}</h3>
+              <p>${val(edu.degree)} ${edu.year ? '· ' + edu.year : ''}</p>
+            </div>`;
+        });
+        html += `</div>`;
+      }
+
+      // Certifications
+      if (data.certifications && data.certifications.length) {
+        html += `
+          <div class="section">
+            <h2>Certifications</h2>
+            <div class="tags">
+              ${data.certifications.map(c => `<span class="tag">${c}</span>`).join('')}
+            </div>
+          </div>`;
+      }
+
+      result.innerHTML = html;
+    }
+  </script>
+
+</body>
+</html>
