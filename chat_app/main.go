@@ -19,19 +19,11 @@ func init() {
 }
 
 func main() {
-	hub := WS.NewHub()
-	r := router.SetUpRoute(hub)
-
-	port := os.Getenv("PORT")
-
-	if port == "" {
-		port = "10000"
-	}
-
-	fmt.Println("Server is Running on port:", port)
-
-	err := http.ListenAndServe("0.0.0.0:"+port, r)
-	if err != nil {
+	hub:=WS.NewHub()
+	r:=router.SetUpRoute(hub)
+	fmt.Println("Server is Running")
+	err:=http.ListenAndServe(":8080",r)
+	if err!=nil{
 		log.Fatal(err)
 	}
 }
