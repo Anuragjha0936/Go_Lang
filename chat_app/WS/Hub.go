@@ -5,7 +5,6 @@ import (
 
 	"github.com/gorilla/websocket"
 )
-
 // client represent the user and his ws connection
 // WriteMu states Only one goroutine should write to a connection at a time.
 type Client struct{
