@@ -39,5 +39,6 @@ func SetUpRoute(hub *WS.Hub) *mux.Router{
 	api.Use(middleware.Middleware)
 	api.HandleFunc("/users",controllers.GetUser).Methods("GET","OPTIONS")
 	api.HandleFunc("/messages/{userId}",controllers.GetMessage).Methods("GET","OPTIONS")
+	api.HandleFunc("/ai/chat", controllers.AiChat).Methods("POST", "OPTIONS")
 	return mr
 }
