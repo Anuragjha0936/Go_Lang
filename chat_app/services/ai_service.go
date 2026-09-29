@@ -10,9 +10,16 @@ import (
 
 
 
+type AIMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// Groq's OpenAI-compatible /chat/completions endpoint expects "messages",
+// not "input" (that field belongs to a different API and returns HTTP 400).
 type AIRequest struct{
-	Model string `json:"model"`
-	Input string `json:"input"`
+	Model    string      `json:"model"`
+	Messages []AIMessage `json:"messages"`
 }
 
 type AIResponse struct {
@@ -30,7 +37,10 @@ func GetAiResponse(message string) (string,error){
 	}
 	reqBody := AIRequest{
 		Model: "llama-3.3-70b-versatile",
-		Input: message,
+		Messages: []AIMessage{
+			{Role: "system", Content: "You are a helpful assistant inside the GoTalk chat app. Keep replies clear and concise."},
+			{Role: "user", Content: message},
+		},
 	}
 
 	JsonData,err:=json.Marshal(reqBody)
