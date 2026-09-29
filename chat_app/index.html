@@ -269,6 +269,14 @@
     .back-btn{display:flex;}
     .bubble{max-width:80%;}
   }
+  /* ---------- AI assistant ---------- */
+  .ai-avatar{background:linear-gradient(135deg,#7c4dff,#00a884);font-size:14px;letter-spacing:.3px;}
+  .bubble.typing-bubble{padding:10px 16px;}
+  .typing{display:inline-flex;gap:4px;align-items:center;}
+  .typing span{width:6px;height:6px;border-radius:50%;background:#8696a0;animation:typingBounce 1.2s infinite ease-in-out;}
+  .typing span:nth-child(2){animation-delay:.15s;}
+  .typing span:nth-child(3){animation-delay:.3s;}
+  @keyframes typingBounce{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-4px);opacity:1}}
 </style>
 </head>
 <body>
@@ -411,6 +419,11 @@ const WS_BASE  = "wss://go-lang-3dec.onrender.com";
   let wsReconnectDelay = 1000; // backs off up to 15s, resets to 1s once connected
   let wsRetryTimer = null;
 
+  // Built-in AI assistant: a pinned pseudo-contact that talks to POST /api/ai/chat
+  const AI_ID = "ai";
+  const AI_CONTACT = {id: AI_ID, name: "AI Assistant", email: "Ask me anything", isAI: true};
+  let aiTyping = false;
+
   const AVATAR_COLORS = ["#f56a6a","#f2a154","#f2c94c","#6fcf97","#56ccf2","#5b8def","#9b6bf2","#e2618a"];
 
   /* ---------------- Helpers ---------------- */
@@ -548,6 +561,7 @@ const WS_BASE  = "wss://go-lang-3dec.onrender.com";
     qs("authScreen").style.display = "none";
     qs("appScreen").classList.add("active");
 
+    loadAiHistory();
     await loadContacts();
     connectWS();
   }
@@ -560,6 +574,7 @@ const WS_BASE  = "wss://go-lang-3dec.onrender.com";
     unreadCounts.clear();
     lastActivity.clear();
     wsReconnectDelay = 1000;
+    aiTyping = false;
     localStorage.removeItem("gotalk_token");
     qs("appScreen").classList.remove("active");
     qs("authScreen").style.display = "flex";
@@ -576,19 +591,24 @@ const WS_BASE  = "wss://go-lang-3dec.onrender.com";
       contacts = await api("/api/users");
       renderContacts(contacts);
     }catch(err){
-      qs("contactList").innerHTML = '<div class="empty-list">Could not load contacts.<br>' + escapeHtml(err.message) + '</div>';
+      renderContacts(null);
+      qs("contactList").insertAdjacentHTML("beforeend", '<div class="empty-list">Could not load contacts.<br>' + escapeHtml(err.message) + '</div>');
     }
+  }
+
+  function avatarHtml(u){
+    if(u.isAI) return '<div class="avatar ai-avatar">AI</div>';
+    return `<div class="avatar" style="background:${colorFor(u.id)}">${initials(u.name)}</div>`;
   }
 
   function renderContacts(list){
     const el = qs("contactList");
-    if(!list || list.length===0){
-      el.innerHTML = '<div class="empty-list">No other users yet. Invite a teammate to register!</div>';
-      return;
-    }
+    const q = qs("searchInput").value.trim().toLowerCase();
+    const sorted = [...(list || [])].sort((a,b)=> (lastActivity.get(b.id)||0) - (lastActivity.get(a.id)||0));
+    // the AI assistant is always pinned to the top (unless the search excludes it)
+    const rows = (!q || "ai assistant".includes(q)) ? [AI_CONTACT, ...sorted] : sorted;
     el.innerHTML = "";
-    const sorted = [...list].sort((a,b)=> (lastActivity.get(b.id)||0) - (lastActivity.get(a.id)||0));
-    sorted.forEach(u=>{
+    rows.forEach(u=>{
       const row = document.createElement("div");
       row.className = "contact" + (selectedContact && selectedContact.id===u.id ? " active" : "");
       row.dataset.id = u.id;
@@ -596,14 +616,14 @@ const WS_BASE  = "wss://go-lang-3dec.onrender.com";
       const last = cached && cached.length ? cached[cached.length-1] : null;
       const unread = unreadCounts.get(u.id) || 0;
       row.innerHTML = `
-        <div class="avatar" style="background:${colorFor(u.id)}">${initials(u.name)}</div>
+        ${avatarHtml(u)}
         <div class="contact-info">
           <div class="contact-top">
             <div class="contact-name">${escapeHtml(u.name)}</div>
             <div class="contact-time">${last ? fmtTime(last.created_at) : ""}</div>
           </div>
           <div class="contact-top">
-            <div class="contact-preview">${last ? escapeHtml(truncate(last.content, 40)) : escapeHtml(u.email)}</div>
+            <div class="contact-preview">${last && !(u.isAI && cached.length===1) ? escapeHtml(truncate(last.content, 40)) : escapeHtml(u.email)}</div>
             ${unread ? `<div class="unread-badge">${unread > 99 ? "99+" : unread}</div>` : ""}
           </div>
         </div>
@@ -611,6 +631,9 @@ const WS_BASE  = "wss://go-lang-3dec.onrender.com";
       row.addEventListener("click", ()=> openConversation(u));
       el.appendChild(row);
     });
+    if(list && sorted.length === 0){
+      el.insertAdjacentHTML("beforeend", '<div class="empty-list">' + (q ? "No matching contacts." : "No other users yet. Invite a teammate to register!") + '</div>');
+    }
   }
 
   qs("searchInput").addEventListener("input", (e)=>{
@@ -628,12 +651,14 @@ const WS_BASE  = "wss://go-lang-3dec.onrender.com";
   async function openConversation(user){
     selectedContact = user;
     qs("appShell").classList.add("chat-open");
-    document.querySelectorAll(".contact").forEach(c=>c.classList.toggle("active", Number(c.dataset.id)===user.id));
+    document.querySelectorAll(".contact").forEach(c=>c.classList.toggle("active", c.dataset.id===String(user.id)));
 
     qs("chatPlaceholder").style.display = "none";
     qs("chatActive").style.display = "flex";
-    qs("chatAvatar").textContent = initials(user.name);
-    qs("chatAvatar").style.background = colorFor(user.id);
+    const chatAv = qs("chatAvatar");
+    chatAv.classList.toggle("ai-avatar", !!user.isAI);
+    chatAv.textContent = user.isAI ? "AI" : initials(user.name);
+    chatAv.style.background = user.isAI ? "" : colorFor(user.id);
     qs("chatName").textContent = user.name;
     qs("chatEmail").textContent = user.email;
 
@@ -677,6 +702,12 @@ const WS_BASE  = "wss://go-lang-3dec.onrender.com";
       row.innerHTML = `<div class="bubble"><span class="txt">${escapeHtml(m.content)}</span><span class="time">${fmtTime(m.created_at)}</span></div>`;
       el.appendChild(row);
     });
+    if(aiTyping && selectedContact.isAI){
+      const row = document.createElement("div");
+      row.className = "msg-row in";
+      row.innerHTML = '<div class="bubble typing-bubble"><span class="typing"><span></span><span></span><span></span></span></div>';
+      el.appendChild(row);
+    }
     el.scrollTop = el.scrollHeight;
   }
 
@@ -758,6 +789,7 @@ const WS_BASE  = "wss://go-lang-3dec.onrender.com";
   function sendMessage(){
     const text = input.value.trim();
     if(!text || !selectedContact) return;
+    if(selectedContact.isAI){ sendToAI(text); return; }
     if(!ws || ws.readyState !== WebSocket.OPEN){
       showToast("Not connected. Reconnecting…");
       return;
@@ -766,6 +798,61 @@ const WS_BASE  = "wss://go-lang-3dec.onrender.com";
     input.value = "";
     input.style.height = "auto";
     closeEmojiPicker();
+  }
+
+  /* ---------------- AI assistant ---------------- */
+  function aiKey(){ return "gotalk_ai_" + (me ? me.id : "anon"); }
+  function loadAiHistory(){
+    let list = [];
+    try{
+      list = JSON.parse(localStorage.getItem(aiKey()) || "[]");
+      if(!Array.isArray(list)) list = [];
+    }catch(e){ list = []; }
+    if(list.length === 0){
+      const first = (me.name || "there").split(/\s+/)[0];
+      list.push({sender_id: AI_ID, receiver_id: me.id, created_at: new Date().toISOString(),
+        content: "Hi " + first + "! I'm your AI assistant. Ask me anything: questions, drafting, ideas, explanations."});
+    }
+    messageCache.set(AI_ID, list);
+  }
+  function saveAiHistory(){
+    try{ localStorage.setItem(aiKey(), JSON.stringify((messageCache.get(AI_ID) || []).slice(-200))); }catch(e){}
+  }
+  function pushAiMessage(m, persist = true){
+    const list = messageCache.get(AI_ID) || [];
+    list.push(m);
+    messageCache.set(AI_ID, list);
+    lastActivity.set(AI_ID, Date.now());
+    if(persist) saveAiHistory();
+  }
+  async function sendToAI(text){
+    if(aiTyping){ showToast("The assistant is still replying…"); return; }
+    input.value = "";
+    input.style.height = "auto";
+    closeEmojiPicker();
+    pushAiMessage({sender_id: me.id, receiver_id: AI_ID, content: text, created_at: new Date().toISOString()});
+    aiTyping = true;
+    renderMessages();
+    renderContacts(contactsFilteredBySearch());
+
+    let reply, ok = true;
+    try{
+      const data = await api("/api/ai/chat", {method: "POST", body: JSON.stringify({message: text})});
+      reply = (data && data.reply ? String(data.reply).trim() : "") || "I didn't get a reply. Please try again.";
+    }catch(err){
+      ok = false;
+      reply = "⚠️ " + (err.message || "Could not reach the assistant.");
+    }
+    aiTyping = false;
+    if(!me) return; // logged out while waiting
+    pushAiMessage({sender_id: AI_ID, receiver_id: me.id, content: reply, created_at: new Date().toISOString()}, ok);
+    if(selectedContact && selectedContact.isAI){
+      renderMessages();
+    }else{
+      unreadCounts.set(AI_ID, (unreadCounts.get(AI_ID) || 0) + 1);
+      showToast("New message from AI Assistant");
+    }
+    renderContacts(contactsFilteredBySearch());
   }
 
   /* ---------------- Emoji picker ---------------- */
